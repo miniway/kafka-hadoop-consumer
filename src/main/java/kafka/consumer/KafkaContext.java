@@ -23,47 +23,47 @@ public class KafkaContext implements Closeable {
     private static Logger LOG = LoggerFactory.getLogger(KafkaContext.class);
 
     SimpleConsumer consumer ;
-	String topic;
-	int partition;
-	long startOffset = -1L;
-	long lastOffset = -1L;
-	long curOffset;
-	int fetchSize;
-	ByteBufferMessageSet messages;
-	Iterator<MessageAndOffset> iterator;
-	
-	public KafkaContext(String broker, String topic, int partition, long lastCommit,int fetchSize, int timeout, int bufferSize) {
-		String[] sp = broker.split(":");
-		consumer = new SimpleConsumer(sp[0], Integer.valueOf(sp[1]), timeout, bufferSize);
-		this.topic = topic;
-		this.partition = partition;
-		this.startOffset = lastCommit;
-		this.curOffset = getStartOffset();
-		this.lastOffset = getLastOffset();
-		this.fetchSize = fetchSize;
-		
-	}
+    String topic;
+    int partition;
+    long startOffset = -1L;
+    long lastOffset = -1L;
+    long curOffset;
+    int fetchSize;
+    ByteBufferMessageSet messages;
+    Iterator<MessageAndOffset> iterator;
+    
+    public KafkaContext(String broker, String topic, int partition, long lastCommit,int fetchSize, int timeout, int bufferSize) {
+        String[] sp = broker.split(":");
+        consumer = new SimpleConsumer(sp[0], Integer.valueOf(sp[1]), timeout, bufferSize);
+        this.topic = topic;
+        this.partition = partition;
+        this.startOffset = lastCommit;
+        this.curOffset = getStartOffset();
+        this.lastOffset = getLastOffset();
+        this.fetchSize = fetchSize;
+        
+    }
 
-	@Override
-	public void close() throws IOException {
-		consumer.close();
-	}
+    @Override
+    public void close() throws IOException {
+        consumer.close();
+    }
 
-	private boolean hasMore() {
-		if (iterator == null) {
-			fetchMore();
-		     if (iterator == null) {
-		         return false;
-		     }
-		}
-		boolean hasNext = iterator.hasNext();
-		if (hasNext) return hasNext;
-		else {
-			fetchMore();
-			return iterator.hasNext();
-		}
-	}
-	
+    private boolean hasMore() {
+        if (iterator == null) {
+            fetchMore();
+             if (iterator == null) {
+                 return false;
+             }
+        }
+        boolean hasNext = iterator.hasNext();
+        if (hasNext) return hasNext;
+        else {
+            fetchMore();
+            return iterator.hasNext();
+        }
+    }
+    
     private void fetchMore() {
         
         FetchRequest request = 
@@ -99,18 +99,18 @@ public class KafkaContext implements Closeable {
         return curOffset;
     }
 
-	public long getStartOffset() {
-		if (startOffset <= 0) {
-			startOffset = consumer.getOffsetsBefore(topic, partition, -2L, 1)[0];
-		}
-		return startOffset;
-	}
+    public long getStartOffset() {
+        if (startOffset <= 0) {
+            startOffset = consumer.getOffsetsBefore(topic, partition, -2L, 1)[0];
+        }
+        return startOffset;
+    }
 
-	public long getLastOffset() {
-		if (lastOffset <= 0) {
-			lastOffset = consumer.getOffsetsBefore(topic, partition, -1L, 1)[0];
-		}
-		return lastOffset;
-	}
+    public long getLastOffset() {
+        if (lastOffset <= 0) {
+            lastOffset = consumer.getOffsetsBefore(topic, partition, -1L, 1)[0];
+        }
+        return lastOffset;
+    }
 
 }

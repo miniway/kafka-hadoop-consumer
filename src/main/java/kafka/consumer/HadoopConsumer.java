@@ -21,33 +21,33 @@ import org.apache.hadoop.util.ToolRunner;
 
 public class HadoopConsumer extends Configured implements Tool {
 
-	static {
-		Configuration.addDefaultResource("core-site.xml");
-		//Configuration.addDefaultResource("mapred-site.xml");
-	}
-	
-	public static class KafkaMapper extends Mapper<LongWritable, BytesWritable, LongWritable, Text> {
-		@Override
-		public void map(LongWritable key, BytesWritable value, Context context) throws IOException {
-			try {
-				context.write(key, new Text(new String(value.getBytes())));
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		
-	}
-	
-	public int run(String[] args) throws Exception {
-		
-	    //ToolRunner.printGenericCommandUsage(System.err);
-	    /*
-		if (args.length < 2) {
-			ToolRunner.printGenericCommandUsage(System.err);
-			return -1;
-		}
-		*/
+    static {
+        Configuration.addDefaultResource("core-site.xml");
+        //Configuration.addDefaultResource("mapred-site.xml");
+    }
+    
+    public static class KafkaMapper extends Mapper<LongWritable, BytesWritable, LongWritable, Text> {
+        @Override
+        public void map(LongWritable key, BytesWritable value, Context context) throws IOException {
+            try {
+                context.write(key, new Text(new String(value.getBytes())));
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+        
+    }
+    
+    public int run(String[] args) throws Exception {
+        
+        //ToolRunner.printGenericCommandUsage(System.err);
+        /*
+        if (args.length < 2) {
+            ToolRunner.printGenericCommandUsage(System.err);
+            return -1;
+        }
+        */
 
         CommandLineParser parser = new PosixParser();
         Options options = buildOptions();
@@ -57,33 +57,33 @@ public class HadoopConsumer extends Configured implements Tool {
         //HelpFormatter formatter = new HelpFormatter();
         //formatter.printHelp( "kafka.consumer.hadoop", options );
         
-		Configuration conf = getConf();
-		conf.set("kafka.topic", cmd.getOptionValue("topic", "test"));
-		conf.set("kafka.groupid", cmd.getOptionValue("consumer-group", "test_group"));
-		conf.set("kafka.zk.connect", cmd.getOptionValue("zk-connect", "localhost:2182"));
-		conf.setInt("kafka.limit", Integer.valueOf(cmd.getOptionValue("limit", "-1")));
-		conf.setBoolean("mapred.map.tasks.speculative.execution", false);
-		
-		Job job = new Job(conf, "Kafka.Consumer");
-		job.setJarByClass(getClass());
-		job.setMapperClass(KafkaMapper.class);
-		// input
-		job.setInputFormatClass(KafkaInputFormat.class);
-		// output
-		job.setOutputKeyClass(LongWritable.class);
-		job.setOutputValueClass(Text.class);
-		job.setOutputFormatClass(KafkaOutputFormat.class);
-		
-		job.setNumReduceTasks(0);
-		
-		KafkaOutputFormat.setOutputPath(job, new Path(cmd.getArgs()[0]));
-		
-		boolean success = job.waitForCompletion(true);
-		if (success) {
-		    commit(conf);
-		}
-		return success ? 0: -1;
-	}
+        Configuration conf = getConf();
+        conf.set("kafka.topic", cmd.getOptionValue("topic", "test"));
+        conf.set("kafka.groupid", cmd.getOptionValue("consumer-group", "test_group"));
+        conf.set("kafka.zk.connect", cmd.getOptionValue("zk-connect", "localhost:2182"));
+        conf.setInt("kafka.limit", Integer.valueOf(cmd.getOptionValue("limit", "-1")));
+        conf.setBoolean("mapred.map.tasks.speculative.execution", false);
+        
+        Job job = new Job(conf, "Kafka.Consumer");
+        job.setJarByClass(getClass());
+        job.setMapperClass(KafkaMapper.class);
+        // input
+        job.setInputFormatClass(KafkaInputFormat.class);
+        // output
+        job.setOutputKeyClass(LongWritable.class);
+        job.setOutputValueClass(Text.class);
+        job.setOutputFormatClass(KafkaOutputFormat.class);
+        
+        job.setNumReduceTasks(0);
+        
+        KafkaOutputFormat.setOutputPath(job, new Path(cmd.getArgs()[0]));
+        
+        boolean success = job.waitForCompletion(true);
+        if (success) {
+            commit(conf);
+        }
+        return success ? 0: -1;
+    }
 
     private void commit(Configuration conf) throws IOException {
         ZkUtils zk = new ZkUtils(conf);
@@ -129,10 +129,10 @@ public class HadoopConsumer extends Configured implements Tool {
 
         return options;
     }
-	
-	public static void main(String[] args) throws Exception {
-		int exitCode = ToolRunner.run(new HadoopConsumer(), args);
-		System.exit(exitCode);
-	}
+    
+    public static void main(String[] args) throws Exception {
+        int exitCode = ToolRunner.run(new HadoopConsumer(), args);
+        System.exit(exitCode);
+    }
 
 }
