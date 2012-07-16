@@ -2,7 +2,10 @@ package kafka.consumer;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
 
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.LongWritable;
@@ -31,10 +34,15 @@ public class KafkaContext implements Closeable {
     int fetchSize;
     ByteBufferMessageSet messages;
     Iterator<MessageAndOffset> iterator;
+    final ArrayBlockingQueue<ByteBufferMessageSet> queue;
+    final FetchThread fetcher;
     
-    public KafkaContext(String broker, String topic, int partition, long lastCommit,int fetchSize, int timeout, int bufferSize) {
-        String[] sp = broker.split(":");
-        consumer = new SimpleConsumer(sp[0], Integer.valueOf(sp[1]), timeout, bufferSize);
+    public KafkaContext(String broker, String topic, 
+                        int partition, long lastCommit,int fetchSize, int timeout, int bufferSize,
+                        String reset) {
+        
+        String[] sp = broker.split(":"); // broker-id:host:port
+        consumer = new SimpleConsumer(sp[1], Integer.valueOf(sp[2]), timeout, bufferSize);
         this.topic = topic;
         this.partition = partition;
         this.startOffset = lastCommit;
@@ -42,10 +50,42 @@ public class KafkaContext implements Closeable {
         this.lastOffset = getLastOffset();
         this.fetchSize = fetchSize;
         
+        
+        resetOffset(reset, sp[0], partition);
+
+        
+        queue = new ArrayBlockingQueue<ByteBufferMessageSet>(5);
+        fetcher = new FetchThread(consumer, queue, topic, partition, curOffset, fetchSize);
+        fetcher.start();
+    }
+
+    private void resetOffset(String reset, String brokerId, int partition) {
+        if (reset == null) return;
+        LOG.info("RESET {} {} {}", new Object[]{reset, brokerId, partition});
+        if (reset.indexOf(":") > 0) {
+            String[] sp = reset.split(":");
+            if (!sp[0].equals(brokerId + "-" + partition)) {
+                return;
+            }
+            reset = sp[1];
+        }
+        if ("smallest".equals(reset)) {
+            setStartOffset(-1);
+        } else if("largest".equals(reset)) {
+            setStartOffset(lastOffset);
+        } else {
+            try {
+                setStartOffset(Long.valueOf(reset));
+            } catch (NumberFormatException e) {
+            }
+        }
     }
 
     @Override
     public void close() throws IOException {
+        fetcher.stop = true;
+        //fetcher.interrupt();
+        while (!fetcher.stopped);
         consumer.close();
     }
 
@@ -58,6 +98,7 @@ public class KafkaContext implements Closeable {
         }
         boolean hasNext = iterator.hasNext();
         if (hasNext) return hasNext;
+        else if (curOffset >= lastOffset) return false;
         else {
             fetchMore();
             return iterator.hasNext();
@@ -66,22 +107,17 @@ public class KafkaContext implements Closeable {
     
     private void fetchMore() {
         
-        FetchRequest request = 
-            new FetchRequest(topic, partition, curOffset, fetchSize);
-
-        messages = consumer.fetch(request);
-        int code = messages.getErrorCode();
-        if (code == 0) {
-            iterator = messages.iterator();
-        } else {
-            if (code == ErrorMapping.OffsetOutOfRangeCode()){
-                LOG.info("OffsetOutOfRange {}-{} Current: {} Last: {}", 
-                        new Object[]{topic, partition, curOffset, getLastOffset()});
-            } else {
-                ErrorMapping.maybeThrowException(code);
+        while(!fetcher.stop || !queue.isEmpty()) {
+            messages = queue.poll();
+            if (messages != null) {
+                int code = messages.getErrorCode();
+                if (code != 0) {
+                    ErrorMapping.maybeThrowException(code);
+                }
+                iterator = messages.iterator();
+                break;
             }
         }
-
     }
     
     public long getNext(LongWritable key, BytesWritable value) throws IOException {
@@ -92,9 +128,11 @@ public class KafkaContext implements Closeable {
         curOffset = messageOffset.offset();
 
         key.set(curOffset - message.size() - 4);
-        byte[] bytes = new byte[message.payloadSize()];
-        message.payload().get(bytes);
-        value.set(bytes, 0, message.payloadSize());
+        //byte[] bytes = new byte[message.payloadSize()];
+        //message.payload().get(bytes);
+        //value.set(bytes, 0, message.payloadSize());
+        ByteBuffer buffer = message.payload();
+        value.set(buffer.array(), buffer.arrayOffset(), message.payloadSize());
         
         return curOffset;
     }
@@ -105,12 +143,80 @@ public class KafkaContext implements Closeable {
         }
         return startOffset;
     }
+    
+    public void setStartOffset(long offset) {
+        if (offset <= 0) {
+            offset = consumer.getOffsetsBefore(topic, partition, -2L, 1)[0];
+            LOG.info("Smallest Offset {}", offset);
+        }
+        curOffset = startOffset = offset;
+    }
 
     public long getLastOffset() {
         if (lastOffset <= 0) {
             lastOffset = consumer.getOffsetsBefore(topic, partition, -1L, 1)[0];
         }
         return lastOffset;
+    }
+
+    static class FetchThread extends Thread {
+        
+        String topic;
+        int partition;
+        long offset;
+        int fetchSize;
+        SimpleConsumer consumer ;
+        public volatile boolean stop = false;
+        public volatile boolean stopped = false;
+        ArrayBlockingQueue<ByteBufferMessageSet> queue ;
+        boolean hasData = false;
+        ByteBufferMessageSet messages = null;
+        
+        public FetchThread(SimpleConsumer consumer, ArrayBlockingQueue<ByteBufferMessageSet> queue, 
+                                String topic, int partition, long offset, int fetchSize) {
+            this.topic = topic;
+            this.partition = partition;
+            this.offset = offset;
+            this.fetchSize = fetchSize;
+            this.consumer = consumer;
+            this.queue = queue;
+        }
+        @Override
+        public void run() {
+            while (!stop) {
+                if (messages == null) {
+                    FetchRequest request = 
+                        new FetchRequest(topic, partition, offset, fetchSize);
+
+                    LOG.info("fetching offset {}", offset);
+                    messages = consumer.fetch(request);
+                }
+                
+                int code = messages.getErrorCode();
+                if (code == 0) {
+                    if (!queue.offer(messages)){
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                        }
+                        continue;
+                    }
+                    hasData = true;
+                    offset += messages.validBytes(); // next offset to fetch
+                    //LOG.info("Valid bytes {} {}", messages.validBytes(), stop);
+                    messages = null;
+                } else if (hasData && code == ErrorMapping.OffsetOutOfRangeCode()) {
+                    // no more data
+                    //queue.notify();
+                    stop = true;
+                    LOG.info("No More Data");
+                } else {
+                    while (!queue.offer(messages));
+                    stop = true;
+                }
+            }
+            stopped = true;
+        }
     }
 
 }

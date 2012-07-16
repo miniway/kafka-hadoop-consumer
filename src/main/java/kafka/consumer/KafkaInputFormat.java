@@ -43,6 +43,7 @@ public class KafkaInputFormat extends InputFormat<LongWritable, BytesWritable> {
         
         for(String partition: partitions) {
             String[] sp = partition.split("-");
+            
             long last = zk.getLastCommit(group, topic, partition) ;
             InputSplit split = new KafkaSplit(sp[0], zk.getBroker(sp[0]), topic, Integer.valueOf(sp[1]), last);
             splits.add(split);
@@ -146,12 +147,13 @@ public class KafkaInputFormat extends InputFormat<LongWritable, BytesWritable> {
             
             int timeout = conf.getInt("kafka.socket.timeout.ms", 30000);
             int bsize = conf.getInt("kafka.socket.buffersize", 64*1024);
-            int fsize = conf.getInt("kafka.fetch.size", 300 * 1024);
-            kcontext = new KafkaContext(ksplit.getBroker(), 
+            int fsize = conf.getInt("kafka.fetch.size", 1024 * 1024);
+            String reset = conf.get("kafka.autooffset.reset");
+            kcontext = new KafkaContext(ksplit.getBrokerId() + ":" + ksplit.getBroker(), 
                                         ksplit.getTopic(), 
                                         ksplit.getPartition(),
                                         ksplit.getLastCommit(),
-                                        fsize, timeout, bsize);
+                                        fsize, timeout, bsize, reset);
             
             start = kcontext.getStartOffset();
             end = kcontext.getLastOffset();
@@ -215,14 +217,14 @@ public class KafkaInputFormat extends InputFormat<LongWritable, BytesWritable> {
             if (limit < 0 || count < limit) {
              
                 long next = kcontext.getNext(key, value);
-                if (next >0) {
+                if (next > 0) {
                     pos = next;
                     count++;
                     return true;
                 }
             }
          
-            LOG.info("Next Offset" + pos);
+            LOG.info("Next Offset " + pos);
             
             return false;
         }

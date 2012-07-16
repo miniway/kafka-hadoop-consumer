@@ -29,8 +29,10 @@ public class HadoopConsumer extends Configured implements Tool {
     public static class KafkaMapper extends Mapper<LongWritable, BytesWritable, LongWritable, Text> {
         @Override
         public void map(LongWritable key, BytesWritable value, Context context) throws IOException {
+            Text out = new Text();
             try {
-                context.write(key, new Text(new String(value.getBytes())));
+                out.set(value.getBytes(),0, value.getLength());
+                context.write(key, out);
             } catch (InterruptedException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
@@ -61,8 +63,12 @@ public class HadoopConsumer extends Configured implements Tool {
         conf.set("kafka.topic", cmd.getOptionValue("topic", "test"));
         conf.set("kafka.groupid", cmd.getOptionValue("consumer-group", "test_group"));
         conf.set("kafka.zk.connect", cmd.getOptionValue("zk-connect", "localhost:2182"));
+        if (cmd.getOptionValue("autooffset-reset") != null)
+            conf.set("kafka.autooffset.reset", cmd.getOptionValue("autooffset-reset"));
         conf.setInt("kafka.limit", Integer.valueOf(cmd.getOptionValue("limit", "-1")));
+        
         conf.setBoolean("mapred.map.tasks.speculative.execution", false);
+        
         
         Job job = new Job(conf, "Kafka.Consumer");
         job.setJarByClass(getClass());
@@ -121,11 +127,18 @@ public class HadoopConsumer extends Configured implements Tool {
                 .withDescription("ZooKeeper connection String")
                 .create("z"));
         
+        options.addOption(OptionBuilder.withArgName("offset")
+                .withLongOpt("autooffset-reset")
+                .hasArg()
+                .withDescription("Offset reset")
+                .create("o"));
+        
         options.addOption(OptionBuilder.withArgName("limit")
                 .withLongOpt("limit")
                 .hasArg()
                 .withDescription("kafka limit")
                 .create("l"));
+        
 
         return options;
     }
