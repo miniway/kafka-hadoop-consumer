@@ -217,7 +217,7 @@ public class KafkaInputFormat extends InputFormat<LongWritable, BytesWritable> {
             if (limit < 0 || count < limit) {
              
                 long next = kcontext.getNext(key, value);
-                if (next > 0) {
+                if (next >= 0) {
                     pos = next;
                     count++;
                     return true;

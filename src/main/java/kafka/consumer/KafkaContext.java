@@ -125,9 +125,10 @@ public class KafkaContext implements Closeable {
         
         MessageAndOffset messageOffset = iterator.next();
         Message message = messageOffset.message();
+		
+        key.set(curOffset);
         curOffset = messageOffset.offset();
 
-        key.set(curOffset - message.size() - 4);
         //byte[] bytes = new byte[message.payloadSize()];
         //message.payload().get(bytes);
         //value.set(bytes, 0, message.payloadSize());
